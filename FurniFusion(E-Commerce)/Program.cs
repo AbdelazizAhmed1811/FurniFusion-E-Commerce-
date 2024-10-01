@@ -1,6 +1,7 @@
 using FurniFusion_E_Commerce_.Data;
 using FurniFusion_E_Commerce_.Interfaces;
 using FurniFusion_E_Commerce_.Models;
+using FurniFusion_E_Commerce_.Repository;
 using FurniFusion_E_Commerce_.Services;
 using Hangfire;
 using Hangfire.PostgreSql;
@@ -74,72 +75,70 @@ namespace FurniFusion_E_Commerce_
                 options.Lockout.AllowedForNewUsers = true;
             });
             builder.Services.AddAuthorization();
-            builder.Services.AddControllers()
-            .AddJsonOptions(options =>
-            {
-                options.JsonSerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.Preserve;
-                options.JsonSerializerOptions.DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull;
-            });
-
+            builder.Services.AddControllers();
             builder.Services.AddEndpointsApiExplorer();
-            //builder.Services.AddSwaggerGen();
+            builder.Services.AddSwaggerGen();
 
             builder.Services.AddHangfire(x =>
                 x.UsePostgreSqlStorage(builder.Configuration.GetConnectionString("defaultConnection")));
 
             builder.Services.AddHangfireServer();
 
-    //        builder.Services.AddSwaggerGen(option =>
-    //        {
-    //            option.SwaggerDoc("v1", new OpenApiInfo { Title = "FurniFusion", Version = "v1" });
-    //            option.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
-    //            {
-    //                In = ParameterLocation.Header,
-    //                Description = "Please enter a valid token",
-    //                Name = "Authorization",
-    //                Type = SecuritySchemeType.Http,
-    //                BearerFormat = "JWT",
-    //                Scheme = "Bearer"
-    //            });
-    //            option.AddSecurityRequirement(new OpenApiSecurityRequirement
-    //{
-    //    {
-    //        new OpenApiSecurityScheme
-    //        {
-    //            Reference = new OpenApiReference
-    //            {
-    //                Type=ReferenceType.SecurityScheme,
-    //                Id="Bearer"
-    //            }
-    //        },
-    //        new string[]{}
-    //    }
-    //});
-    //        });
+            builder.Services.AddSwaggerGen(option =>
+            {
+                option.SwaggerDoc("v1", new OpenApiInfo { Title = "FurniFusion", Version = "v1" });
+                option.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+                {
+                    In = ParameterLocation.Header,
+                    Description = "Please enter a valid token",
+                    Name = "Authorization",
+                    Type = SecuritySchemeType.Http,
+                    BearerFormat = "JWT",
+                    Scheme = "Bearer"
+                });
+                option.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference
+                {
+                    Type=ReferenceType.SecurityScheme,
+                    Id="Bearer"
+                }
+            },
+            new string[]{}
+        }
+    });
+            });
 
             // Configure Email Settings
             builder.Services.Configure<EmailSettings>(builder.Configuration.GetSection("EmailSettings"));
             // Register ChatService
             builder.Services.AddTransient<IEmailService, EmailService>();
-            builder.Services.AddScoped<IAddressService, AddressService>();
+
             builder.Services.AddScoped<ITokenService, TokenService>();
+
+            builder.Services.AddScoped<IProductManagerRepository, ProductManagerRepository>();
 
 
 
             var app = builder.Build();
 
-            //// Configure the HTTP request pipeline.
-            //if (app.Environment.IsDevelopment())
-            //{
-            //    app.UseSwagger();
-            //    app.UseSwaggerUI();
-            //}
+            // Configure the HTTP request pipeline.
+            if (app.Environment.IsDevelopment())
+            {
+                app.UseSwagger();
+                app.UseSwaggerUI();
+            }
 
             app.UseHttpsRedirection();
             app.UseAuthentication();
             app.UseAuthorization();
 
             app.UseHangfireDashboard("/fire");
+
+            app.UseAuthorization();
 
             app.MapControllers();
 

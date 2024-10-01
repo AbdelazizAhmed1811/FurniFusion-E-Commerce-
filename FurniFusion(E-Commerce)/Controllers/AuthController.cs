@@ -64,11 +64,14 @@ namespace FurniFusion_E_Commerce_.Controllers
 
                     var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
 
-                    var confirmationLink = Url.Action("ConfirmEmail", "Auth", new { userId = user.Id, token = token }, Request.Scheme);
+                    var encodedToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token));
+
+                    var confirmationLink = Url.Action("ConfirmEmail", "Auth", new { userId = user.Id, token = encodedToken }, Request.Scheme);
 
                     var template = await _emailService.GetEmailTemplate("emailVerification");
+
                     // Queue the email sending as a background job
-                    BackgroundJob.Enqueue(() => _emailService.SendEmailAsync(user.Email!, "Confirm Your Email", template.Replace("{{confirmationLink}}", confirmationLink!)));
+                    BackgroundJob.Enqueue(() => _emailService.SendEmailAsync(user.Email!, "Confirm Your FurniFusion Email", template.Replace("{{confirmationLink}}", confirmationLink!)));
 
                     // Commit the transaction
                     scope.Complete();
@@ -122,7 +125,9 @@ namespace FurniFusion_E_Commerce_.Controllers
                     });
 
                 // Generate JWT token
-                var token = _tokenService.CreateToken(user);
+
+                var userRoles = await _userManager.GetRolesAsync(user);
+                var token = _tokenService.CreateToken(user, userRoles);
 
 
 
@@ -131,6 +136,7 @@ namespace FurniFusion_E_Commerce_.Controllers
                 {
                     UserName = user.UserName,
                     Email = user.Email,
+                    Role = await _userManager.GetRolesAsync(user) as List<string>,
                     Token = token
                 });
             }
@@ -140,7 +146,6 @@ namespace FurniFusion_E_Commerce_.Controllers
             }
 
         }
-
 
         [HttpPost("logout")]
         [Authorize]
@@ -165,73 +170,54 @@ namespace FurniFusion_E_Commerce_.Controllers
 
             try
             {
-                // Find user by email
+
                 var user = await _userManager.FindByEmailAsync(sendEmailVerification.Email!);
 
                 if (user == null)
-                    return BadRequest("Invalid request! No user found with this email.");
+                    return BadRequest("Invalid request!");
 
-                // Generate email confirmation token
                 var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
-
-                // Encode token using Base64 URL encoding
+                
                 var encodedToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token));
 
-                // Get email verification template
                 var template = await _emailService.GetEmailTemplate("emailVerification");
 
-                // Generate confirmation link
                 var confirmationLink = Url.Action("ConfirmEmail", "Auth", new { userId = user.Id, token = encodedToken }, Request.Scheme);
 
-                // Replace token placeholder in the template with the actual confirmation link
-                var emailBody = template.Replace("{{confirmationLink}}", confirmationLink!);
-
-                // Queue the email to be sent using Hangfire
-                BackgroundJob.Enqueue(() => _emailService.SendEmailAsync(user.Email!, "Confirm Your Email", emailBody));
+                // Queue the email sending as a background job
+                BackgroundJob.Enqueue(() => _emailService.SendEmailAsync(user.Email!, "Confirm Your FurniFusion Email", template.Replace("{{confirmationLink}}", confirmationLink!)));
 
                 return Ok("Email verification link has been sent to your email!");
             }
             catch (Exception e)
             {
-                // Catch any exception and return 500 with the message
-                return StatusCode(500, $"An error occurred: {e.Message}");
+                return StatusCode(500, e.Message);
             }
+
         }
 
         [HttpGet("confirmEmail")]
-        public async Task<IActionResult> ConfirmEmail( string userId, string token)
+        public async Task<IActionResult> ConfirmEmail(string userId, string token)
         {
-            // Find user by ID
-            var user = await _userManager.FindByIdAsync(userId); ;
+            var user = await _userManager.FindByIdAsync(userId);
 
             if (user == null)
             {
-                return NotFound("User not found.");
+                return NotFound();
             }
 
-            try
-            {
-                // Decode the token back from Base64 URL encoding
-                var decodedToken = Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(token));
+            // Decode the Base64 URL-encoded token
+            byte[] decodedBytes = WebEncoders.Base64UrlDecode(token);
 
-                // Confirm the email using the decoded token
-                var result = await _userManager.ConfirmEmailAsync(user, decodedToken);
+            // Convert the byte array back to a string
+            string decodedToken = Encoding.UTF8.GetString(decodedBytes);
 
-                // Check if the email confirmation succeeded
-                if (!result.Succeeded)
-                    return BadRequest(result.Errors);
+            var result = await _userManager.ConfirmEmailAsync(user, decodedToken);
 
-                return Ok("Email confirmed successfully!");
-            }
-            catch (FormatException ex)
-            {
-                // If decoding fails, catch the error and return a bad request
-                return BadRequest("Invalid token format.");
-            }
-            catch (Exception e)
-            {
-                return StatusCode(500, $"An error occurred: {e.Message}");
-            }
+            if (!result.Succeeded)
+                return BadRequest(result.Errors);
+
+            return Ok(result);
         }
 
         [HttpPost("sendResetPasswordEmail")]
